@@ -1,33 +1,26 @@
-
 # FlowRun
 
-**FlowRun** — распределенная платформа для планирования
-и выполнения фоновых задач на основе микросервисной архитектуры.
-
-Система предназначена для автоматизации повторяющихся операций, распределения задач между несколькими исполнителями и мониторинг результатов их выполнения.
+**FlowRun** — распределённая платформа для планирования и выполнения фоновых задач. Она предназначена для автоматизации повторяющихся операций, распределения задач между исполнителями и отслеживания результатов.
 
 ## Архитектура
 
-FlowRun разрабатывается с использованием
-микросервисной архитектуры.
+В текущей версии Docker Compose запускает базовый Task API, PostgreSQL, Redis и RabbitMQ. В таблице описана целевая архитектура FlowRun.
 
 | Компонент | Назначение |
 |-----------|------------|
-| **Task API** | Создание и управление задачами |
-| **Scheduler** | Планирование запуска задач |
+| **Task API** | Создание задач, управление ими и получение статусов |
+| **Scheduler** | Запуск задач по расписанию |
 | **Worker** | Выполнение фоновых задач |
-| **PostgreSQL** | Хранение задач и результатов |
+| **PostgreSQL** | Хранение задач и результатов выполнения |
 | **Redis** | Кэширование и координация |
 | **RabbitMQ** | Асинхронная передача заданий |
 | **API Gateway** | Маршрутизация запросов |
-| **Frontend** | Веб-интерфейс управления |
-
+| **Frontend** | Веб-интерфейс управления задачами |
 
 ### Архитектурные диаграммы
 
-[C1 System Context](docs/c1.md)
-
-[C2 Container Diagram](docs/c2.md)
+- [C1 System Context](docs/c1.md)
+- [C2 Container Diagram](docs/c2.md)
 
 ## Технологии
 
@@ -40,32 +33,46 @@ FlowRun разрабатывается с использованием
 | **API Gateway** | Nginx |
 | **Containerization** | Docker, Docker Compose |
 
-
 ## Запуск текущей версии
 
-Требуется установленный Docker Desktop.
+Для запуска нужен Docker Desktop. Команды выполняются в PowerShell из корня проекта.
 
-Запуск:
+Если файла `.env` ещё нет, создай его из шаблона.
 
-    docker compose up -d --build
+```powershell
+Copy-Item .env.example .env
+```
 
-Проверка:
+Открой `.env` и задай свои значения для `POSTGRES_PASSWORD` и `RABBITMQ_PASSWORD`.
 
-    http://localhost:8000/hello
-    http://localhost:8000/health
-    http://localhost:8000/docs
+Запусти сервисы и проверь состояние контейнеров.
 
-Остановка:
+```powershell
+docker compose up -d --build --wait
+docker compose ps
+```
 
-    docker compose down
+После запуска доступны:
 
+- [Тестовый эндпоинт `/hello`](http://localhost:8000/hello)
+- [Проверка состояния API `/health`](http://localhost:8000/health)
+- [Документация API `/docs`](http://localhost:8000/docs)
+- [Панель RabbitMQ](http://127.0.0.1:15672) — логин `flowrun`, пароль из `RABBITMQ_PASSWORD` в `.env`.
+
+Чтобы остановить сервисы, выполни команду:
+
+```powershell
+docker compose down
+```
 
 ## Roadmap
 
 - [x] Базовый FastAPI-сервис
 - [x] Контейнеризация Docker
-- [ ] Подключение PostgreSQL, Redis и RabbitMQ
-- [ ] Реализация CRUD для задач
+- [x] Запуск PostgreSQL, Redis и RabbitMQ в Docker Compose
+- [ ] CRUD для задач с хранением в PostgreSQL
+- [ ] Кэширование в Redis
+- [ ] Постановка заданий в очередь RabbitMQ
 - [ ] Планировщик задач (Scheduler)
 - [ ] Распределённое выполнение задач (Workers)
 - [ ] Веб-интерфейс
