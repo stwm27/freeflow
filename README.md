@@ -4,7 +4,9 @@
 
 ## Архитектура
 
-В текущей версии Docker Compose запускает базовый Task API, PostgreSQL, Redis и RabbitMQ. В таблице описана целевая архитектура FlowRun.
+В текущей версии Task API поддерживает создание, просмотр, изменение и удаление задач с хранением в PostgreSQL. Чтение задачи по ID кэшируется в Redis на 60 секунд. При изменении или удалении задачи ее кэш сбрасывается.
+
+Docker Compose запускает Task API, PostgreSQL, Redis и RabbitMQ. В таблице ниже описана целевая архитектура FlowRun.
 
 | Компонент | Назначение |
 |-----------|------------|
@@ -70,8 +72,8 @@ docker compose down
 - [x] Базовый FastAPI-сервис
 - [x] Контейнеризация Docker
 - [x] Запуск PostgreSQL, Redis и RabbitMQ в Docker Compose
-- [ ] CRUD для задач с хранением в PostgreSQL
-- [ ] Кэширование в Redis
+- [x] CRUD для задач с хранением в PostgreSQL
+- [x] Кэширование в Redis
 - [ ] Постановка заданий в очередь RabbitMQ
 - [ ] Планировщик задач (Scheduler)
 - [ ] Распределённое выполнение задач (Workers)
