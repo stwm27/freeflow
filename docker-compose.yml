@@ -5,7 +5,17 @@ services:
         ports:
             - "8000:8000"
         restart: unless-stopped
-
+        environment:
+            POSTGRES_HOST: postgres
+            POSTGRES_DB: flowrun
+            POSTGRES_USER: flowrun
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+            REDIS_URL: redis://redis:6379/0
+        depends_on:
+            postgres:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
     postgres:
         image: postgres:16
         environment:
