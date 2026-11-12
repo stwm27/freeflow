@@ -51,6 +51,17 @@ class TaskResponse(BaseModel):
     parameters: dict[str, Any]
     created_at: datetime
 
+class RunResponse(BaseModel):
+    id: int
+    task_id: int | None
+    task_snapshot: dict[str, Any]
+    status: str
+    result: dict[str, Any] | None
+    error: str | None
+    created_at: datetime
+    published_at: datetime | None
+    started_at: datetime | None
+    finished_at: datetime | None
 
 
 @app.get("/hello")
@@ -177,3 +188,66 @@ def delete_task(task_id: int):
         cache.delete(f"task:{task_id}")
 
     return Response(status_code=204)
+
+
+
+@app.post(
+    "/tasks/{task_id}/runs",
+    response_model=RunResponse,
+    status_code=202,
+)
+def create_run(task_id: int):
+    task_query = text("""
+        SELECT name, task_type, parameters
+        FROM tasks
+        WHERE id = :task_id
+        FOR SHARE
+    """)
+
+    run_query = text("""
+        INSERT INTO task_runs (task_id, task_snapshot)
+        VALUES (:task_id, CAST(:task_snapshot AS JSONB))
+        RETURNING
+            id, task_id, task_snapshot, status, result, error,
+            created_at, published_at, started_at, finished_at
+    """)
+
+    with engine.begin() as connection:
+        task_result = connection.execute(
+            task_query,
+            {"task_id": task_id},
+        )
+        task = task_result.mappings().one_or_none()
+
+        if task is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        values = {
+            "task_id": task_id,
+            "task_snapshot": json.dumps(dict(task)),
+        }
+
+        run_result = connection.execute(run_query, values)
+        run = dict(run_result.mappings().one())
+
+    return run
+
+
+@app.get("/runs/{run_id}", response_model=RunResponse)
+def get_run(run_id: int):
+    query = text("""
+        SELECT
+            id, task_id, task_snapshot, status, result, error,
+            created_at, published_at, started_at, finished_at
+        FROM task_runs
+        WHERE id = :run_id
+    """)
+
+    with engine.connect() as connection:
+        result = connection.execute(query, {"run_id": run_id})
+        run = result.mappings().one_or_none()
+
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    return dict(run)

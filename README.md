@@ -4,9 +4,11 @@
 
 ## Архитектура
 
-В текущей версии Task API поддерживает создание, просмотр, изменение и удаление задач с хранением в PostgreSQL. Чтение задачи по ID кэшируется в Redis на 60 секунд. При изменении или удалении задачи ее кэш сбрасывается.
+В текущей версии Task API поддерживает CRUD задач с хранением в PostgreSQL и кэшированием в Redis. Для каждой задачи можно создать отдельный запуск и получить его статус и результат.
 
-Docker Compose запускает Task API, PostgreSQL, Redis и RabbitMQ. В таблице ниже описана целевая архитектура FlowRun.
+Scheduler находит ожидающие запуски и отправляет их в RabbitMQ. Worker получает задания типа `demo`, выполняет их и сохраняет результат в PostgreSQL. Проверено, что при остановленном Worker задание остается в очереди и обрабатывается после его запуска.
+
+Docker Compose запускает Task API, Scheduler, Worker, PostgreSQL, Redis и RabbitMQ. 
 
 | Компонент | Назначение |
 |-----------|------------|
@@ -21,8 +23,9 @@ Docker Compose запускает Task API, PostgreSQL, Redis и RabbitMQ. В т
 
 ### Архитектурные диаграммы
 
-- [C1 System Context](docs/c1.md)
-- [C2 Container Diagram](docs/c2.md)
+[C1 System Context](docs/c1.md)
+
+[C2 Container Diagram](docs/c2.md)
 
 ## Технологии
 
@@ -36,6 +39,14 @@ Docker Compose запускает Task API, PostgreSQL, Redis и RabbitMQ. В т
 | **Containerization** | Docker, Docker Compose |
 
 ## Запуск текущей версии
+
+При первом запуске следует подготовить таблицы PostgreSQL.
+
+```powershell
+docker compose up -d --wait postgres
+docker compose cp ./infrastructure/postgres/schema.sql postgres:/tmp/flowrun-schema.sql
+docker compose exec -T postgres psql -U flowrun -d flowrun -v ON_ERROR_STOP=1 -f /tmp/flowrun-schema.sql
+```
 
 Для запуска нужен Docker Desktop. Команды выполняются в PowerShell из корня проекта.
 
@@ -56,10 +67,13 @@ docker compose ps
 
 После запуска доступны:
 
-- [Тестовый эндпоинт `/hello`](http://localhost:8000/hello)
-- [Проверка состояния API `/health`](http://localhost:8000/health)
-- [Документация API `/docs`](http://localhost:8000/docs)
-- [Панель RabbitMQ](http://127.0.0.1:15672) — логин `flowrun`, пароль из `RABBITMQ_PASSWORD` в `.env`.
+[Тестовый эндпоинт `/hello`](http://localhost:8000/hello)
+
+[Проверка состояния API `/health`](http://localhost:8000/health)
+
+[Документация API `/docs`](http://localhost:8000/docs)
+
+[Панель RabbitMQ](http://127.0.0.1:15672) — логин `flowrun`, пароль из `RABBITMQ_PASSWORD` в `.env`.
 
 Чтобы остановить сервисы, следует выполнить команду:
 
@@ -74,9 +88,9 @@ docker compose down
 - [x] Запуск PostgreSQL, Redis и RabbitMQ в Docker Compose
 - [x] CRUD для задач с хранением в PostgreSQL
 - [x] Кэширование в Redis
-- [ ] Постановка заданий в очередь RabbitMQ
-- [ ] Планировщик задач (Scheduler)
-- [ ] Распределённое выполнение задач (Workers)
+- [x] Постановка заданий в очередь RabbitMQ
+- [x] Планировщик задач (Scheduler)
+- [x] Распределённое выполнение задач (Workers)
 - [ ] Веб-интерфейс
 - [ ] Сегментация сети и Firewall
 - [ ] Отказоустойчивость и резервное копирование

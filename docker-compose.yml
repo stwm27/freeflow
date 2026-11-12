@@ -55,6 +55,40 @@ services:
             retries: 12
             start_period: 20s
 
+    scheduler:
+        build: ./scheduler
+        restart: unless-stopped
+        environment:
+            POSTGRES_HOST: postgres
+            POSTGRES_DB: flowrun
+            POSTGRES_USER: flowrun
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+            RABBITMQ_HOST: rabbitmq
+            RABBITMQ_USER: flowrun
+            RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+        depends_on:
+            postgres:
+                condition: service_healthy
+            rabbitmq:
+                condition: service_healthy
+
+    worker:
+        build: ./worker
+        restart: unless-stopped
+        environment:
+            POSTGRES_HOST: postgres
+            POSTGRES_DB: flowrun
+            POSTGRES_USER: flowrun
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+            RABBITMQ_HOST: rabbitmq
+            RABBITMQ_USER: flowrun
+            RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+        depends_on:
+            postgres:
+                condition: service_healthy
+            rabbitmq:
+                condition: service_healthy
+
 volumes:
     postgres-data:
     rabbitmq-data:
