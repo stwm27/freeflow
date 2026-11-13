@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FlowRun</title>
+    <style>
+        body {
+            max-width: 960px;
+            margin: 32px auto;
+            padding: 0 20px;
+            font-family: Arial, sans-serif;
+            color: #202938;
+            background: #f4f6f9;
+        }
+
+        section {
+            margin: 24px 0;
+            padding: 24px;
+            background: white;
+            border: 1px solid #dce1e8;
+            border-radius: 10px;
+        }
+
+        h1, h2 {
+            margin-top: 0;
+        }
+
+        label {
+            display: block;
+            margin: 16px 0 6px;
+        }
+
+        input {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #aeb8c5;
+            border-radius: 5px;
+            font: inherit;
+        }
+
+        button {
+            margin-top: 14px;
+            padding: 10px 16px;
+            border: 0;
+            border-radius: 5px;
+            background: #235ed5;
+            color: white;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px 8px;
+            text-align: left;
+            border-bottom: 1px solid #e1e5ec;
+        }
+
+        td button {
+            margin: 0;
+        }
+
+        pre {
+            padding: 16px;
+            background: #eef2f7;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        #error {
+            color: #b42318;
+        }
+
+        #notice {
+            color: #166534;
+        }
+    </style>
+</head>
+<body>
+    <h1>FlowRun</h1>
+    <p>Создание и выполнение фоновых задач.</p>
+
+    <p id="error" role="alert"></p>
+    <p id="notice" role="status"></p>
+
+    <section>
+        <h2>Новая задача</h2>
+
+        <form id="task-form">
+            <label for="task-name">Название</label>
+            <input id="task-name" maxlength="200" required>
+
+            <label for="task-message">Сообщение для задачи demo</label>
+            <input
+                id="task-message"
+                value="Hello from FlowRun"
+                maxlength="2000"
+                required
+            >
+
+            <button id="create-button" type="submit">
+                Создать задачу
+            </button>
+        </form>
+    </section>
+
+    <section>
+        <h2>Задачи</h2>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Название</th>
+                        <th>Тип</th>
+                        <th>Действие</th>
+                    </tr>
+                </thead>
+                <tbody id="tasks"></tbody>
+            </table>
+        </div>
+
+        <p id="empty-list" hidden>Задач пока нет.</p>
+        <button id="refresh-tasks" type="button">Обновить список</button>
+    </section>
+
+    <section>
+        <h2>Результат запуска</h2>
+
+        <form id="run-form">
+            <label for="run-id">ID запуска</label>
+            <input id="run-id" type="number" min="1" step="1" required>
+
+            <button id="refresh-run" type="submit">
+                Обновить результат
+            </button>
+        </form>
+
+        <pre id="run-result" aria-live="polite">Запустите задачу из списка или введите ID существующего запуска.</pre>
+    </section>
+
+    <script>
+        const errorBox = document.getElementById("error");
+        const noticeBox = document.getElementById("notice");
+        const taskForm = document.getElementById("task-form");
+        const createButton = document.getElementById("create-button");
+        const tasksBody = document.getElementById("tasks");
+        const refreshTasksButton = document.getElementById("refresh-tasks");
+        const runForm = document.getElementById("run-form");
+        const runIdInput = document.getElementById("run-id");
+        const runResult = document.getElementById("run-result");
+        const refreshRunButton = document.getElementById("refresh-run");
+
+        async function apiRequest(path, options = {}) {
+            const response = await fetch("/api" + path, {
+                ...options,
+                headers: {
+                    "Content-Type": "application/json"
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error("Ошибка запроса. HTTP " + response.status);
+            }
+
+            return response.json();
+        }
+
+        async function startRun(taskId, button) {
+            button.disabled = true;
+            errorBox.textContent = "";
+            noticeBox.textContent = "";
+
+            try {
+                const run = await apiRequest(
+                    "/tasks/" + taskId + "/runs",
+                    { method: "POST" }
+                );
+
+                runIdInput.value = run.id;
+                runResult.textContent = JSON.stringify(run, null, 2);
+                noticeBox.textContent =
+                    "Запуск №" + run.id +
+                    " создан. Нажмите «Обновить результат».";
+            } catch (error) {
+                errorBox.textContent = error.message;
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        async function loadTasks() {
+            refreshTasksButton.disabled = true;
+
+            try {
+                const tasks = await apiRequest("/tasks");
+                tasksBody.replaceChildren();
+
+                document.getElementById("empty-list").hidden =
+                    tasks.length !== 0;
+
+                for (const task of tasks) {
+                    const row = tasksBody.insertRow();
+
+                    row.insertCell().textContent = task.id;
+                    row.insertCell().textContent = task.name;
+                    row.insertCell().textContent = task.task_type;
+
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.textContent = "Запустить";
+                    button.disabled = task.task_type !== "demo";
+                    button.addEventListener("click", () => {
+                        startRun(task.id, button);
+                    });
+
+                    row.insertCell().append(button);
+                }
+            } finally {
+                refreshTasksButton.disabled = false;
+            }
+        }
+
+        taskForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            createButton.disabled = true;
+            errorBox.textContent = "";
+            noticeBox.textContent = "";
+
+            try {
+                const task = await apiRequest("/tasks", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        name: document.getElementById("task-name")
+                            .value.trim(),
+                        task_type: "demo",
+                        parameters: {
+                            message: document.getElementById("task-message")
+                                .value
+                        }
+                    })
+                });
+
+                noticeBox.textContent = "Задача №" + task.id + " создана.";
+                taskForm.reset();
+                await loadTasks();
+            } catch (error) {
+                errorBox.textContent = error.message;
+            } finally {
+                createButton.disabled = false;
+            }
+        });
+
+        refreshTasksButton.addEventListener("click", async () => {
+            errorBox.textContent = "";
+
+            try {
+                await loadTasks();
+            } catch (error) {
+                errorBox.textContent = error.message;
+            }
+        });
+
+        runForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            refreshRunButton.disabled = true;
+            errorBox.textContent = "";
+
+            try {
+                const run = await apiRequest("/runs/" + runIdInput.value);
+                runResult.textContent = JSON.stringify(run, null, 2);
+            } catch (error) {
+                errorBox.textContent = error.message;
+            } finally {
+                refreshRunButton.disabled = false;
+            }
+        });
+
+        loadTasks().catch((error) => {
+            errorBox.textContent = error.message;
+        });
+    </script>
+</body>
+</html>
