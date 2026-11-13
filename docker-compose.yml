@@ -3,7 +3,7 @@ services:
         build: ./task-api
         container_name: flowrun-task-api
         ports:
-            - "8000:8000"
+        - 127.0.0.1:8000:8000
         restart: unless-stopped
         environment:
             POSTGRES_HOST: postgres
@@ -16,6 +16,12 @@ services:
                 condition: service_healthy
             redis:
                 condition: service_healthy
+        image: flowrun-task-api
+        networks:
+            app:
+                ipv4_address: 172.28.20.10
+            data:
+                ipv4_address: 172.28.30.10
     postgres:
         image: postgres:16
         environment:
@@ -23,21 +29,37 @@ services:
             POSTGRES_USER: flowrun
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
         volumes:
-            - postgres-data:/var/lib/postgresql/data
+        - postgres-data:/var/lib/postgresql/data
         healthcheck:
-            test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "flowrun", "-d", "flowrun"]
+            test:
+            - CMD
+            - pg_isready
+            - -h
+            - 127.0.0.1
+            - -U
+            - flowrun
+            - -d
+            - flowrun
             interval: 5s
             timeout: 3s
             retries: 10
-
+        network_mode: service:postgres-firewall
+        depends_on:
+            postgres-firewall:
+                condition: service_healthy
     redis:
         image: redis:7-alpine
         healthcheck:
-            test: ["CMD", "redis-cli", "ping"]
+            test:
+            - CMD
+            - redis-cli
+            - ping
             interval: 5s
             timeout: 3s
             retries: 10
-
+        networks:
+            data:
+                ipv4_address: 172.28.30.101
     rabbitmq:
         image: rabbitmq:4-management
         hostname: rabbitmq
@@ -45,16 +67,23 @@ services:
             RABBITMQ_DEFAULT_USER: flowrun
             RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
         ports:
-            - "127.0.0.1:15672:15672"
+        - 127.0.0.1:15672:15672
         volumes:
-            - rabbitmq-data:/var/lib/rabbitmq
+        - rabbitmq-data:/var/lib/rabbitmq
         healthcheck:
-            test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+            test:
+            - CMD
+            - rabbitmq-diagnostics
+            - -q
+            - check_running
             interval: 10s
             timeout: 5s
             retries: 12
             start_period: 20s
-
+        networks:
+            data:
+                ipv4_address: 172.28.30.102
+            management: {} 
     scheduler:
         build: ./scheduler
         restart: unless-stopped
@@ -71,7 +100,11 @@ services:
                 condition: service_healthy
             rabbitmq:
                 condition: service_healthy
-
+        networks:
+            app:
+                ipv4_address: 172.28.20.30
+            data:
+                ipv4_address: 172.28.30.30
     worker:
         build: ./worker
         restart: unless-stopped
@@ -88,23 +121,72 @@ services:
                 condition: service_healthy
             rabbitmq:
                 condition: service_healthy
+        networks:
+            app:
+                ipv4_address: 172.28.20.20
+            data:
+                ipv4_address: 172.28.30.20
     frontend:
         build: ./frontend
         restart: unless-stopped
-    
+        networks:
+            edge:
+                ipv4_address: 172.28.10.20
     gateway:
         image: nginx:stable-alpine
         restart: unless-stopped
         ports:
-            - "127.0.0.1:8080:80"
+        - 127.0.0.1:8080:80
         volumes:
-            - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+        - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
         depends_on:
             task-api:
                 condition: service_started
             frontend:
                 condition: service_started
-
+        networks:
+            edge:
+                ipv4_address: 172.28.10.10
+            app:
+                ipv4_address: 172.28.20.2
+    postgres-firewall:
+        build: ./infrastructure/firewall
+        restart: unless-stopped
+        cap_add:
+        - NET_ADMIN
+        networks:
+            data:
+                ipv4_address: 172.28.30.100
+                aliases:
+                - postgres
+        healthcheck:
+            test:
+            - CMD
+            - test
+            - -f
+            - /tmp/firewall-ready
+            interval: 5s
+            timeout: 3s
+            retries: 10
 volumes:
-    postgres-data:
-    rabbitmq-data:
+    postgres-data: null
+    rabbitmq-data: null
+networks:
+    edge:
+        name: flowrun-edge
+        ipam:
+            config:
+            -   subnet: 172.28.10.0/24
+    app:
+        name: flowrun-app
+        ipam:
+            config:
+            -   subnet: 172.28.20.0/24
+    data:
+        name: flowrun-data
+        internal: true
+        ipam:
+            config:
+            -   subnet: 172.28.30.0/24
+    management:
+        name: flowrun-management 
