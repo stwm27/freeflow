@@ -67,30 +67,6 @@ services:
         networks:
             data:
                 ipv4_address: 172.28.30.101
-    rabbitmq:
-        image: rabbitmq:4-management
-        hostname: rabbitmq
-        environment:
-            RABBITMQ_DEFAULT_USER: flowrun
-            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
-        ports:
-        - 127.0.0.1:15672:15672
-        volumes:
-        - rabbitmq-data:/var/lib/rabbitmq
-        healthcheck:
-            test:
-            - CMD
-            - rabbitmq-diagnostics
-            - -q
-            - check_running
-            interval: 10s
-            timeout: 5s
-            retries: 12
-            start_period: 20s
-        networks:
-            data:
-                ipv4_address: 172.28.30.102
-            management: {}
     scheduler:
         build: ./scheduler
         restart: unless-stopped
@@ -99,13 +75,13 @@ services:
             POSTGRES_DB: flowrun
             POSTGRES_USER: flowrun
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-            RABBITMQ_HOST: rabbitmq
+            RABBITMQ_HOST: rabbitmq-proxy
             RABBITMQ_USER: flowrun
             RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
         depends_on:
             postgres:
                 condition: service_healthy
-            rabbitmq:
+            rabbitmq-proxy:
                 condition: service_healthy
         networks:
             app:
@@ -120,13 +96,13 @@ services:
             POSTGRES_DB: flowrun
             POSTGRES_USER: flowrun
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-            RABBITMQ_HOST: rabbitmq
+            RABBITMQ_HOST: rabbitmq-proxy
             RABBITMQ_USER: flowrun
             RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
         depends_on:
             postgres:
                 condition: service_healthy
-            rabbitmq:
+            rabbitmq-proxy:
                 condition: service_healthy
         networks:
             app:
@@ -286,12 +262,120 @@ services:
             timeout: 4s
             retries: 48
             start_period: 10s
+    rabbitmq-1:
+        build: ./infrastructure/rabbitmq-ha
+        image: flowrun-rabbitmq-ha
+        hostname: rabbitmq-1
+        restart: unless-stopped
+        stop_grace_period: 60s
+        environment:
+            RABBITMQ_DEFAULT_USER: flowrun
+            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+        secrets:
+        - rabbitmq_cookie
+        volumes:
+        - rabbitmq-1-data:/var/lib/rabbitmq
+        networks:
+            data:
+                ipv4_address: 172.28.30.103
+        healthcheck:
+            test:
+            - CMD
+            - rabbitmq-diagnostics
+            - -q
+            - check_running
+            interval: 10s
+            timeout: 5s
+            retries: 24
+            start_period: 20s
+    rabbitmq-2:
+        build: ./infrastructure/rabbitmq-ha
+        image: flowrun-rabbitmq-ha
+        hostname: rabbitmq-2
+        restart: unless-stopped
+        stop_grace_period: 60s
+        environment:
+            RABBITMQ_DEFAULT_USER: flowrun
+            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+        secrets:
+        - rabbitmq_cookie
+        volumes:
+        - rabbitmq-2-data:/var/lib/rabbitmq
+        networks:
+            data:
+                ipv4_address: 172.28.30.104
+        healthcheck:
+            test:
+            - CMD
+            - rabbitmq-diagnostics
+            - -q
+            - check_running
+            interval: 10s
+            timeout: 5s
+            retries: 24
+            start_period: 20s
+    rabbitmq-3:
+        build: ./infrastructure/rabbitmq-ha
+        image: flowrun-rabbitmq-ha
+        hostname: rabbitmq-3
+        restart: unless-stopped
+        stop_grace_period: 60s
+        environment:
+            RABBITMQ_DEFAULT_USER: flowrun
+            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+        secrets:
+        - rabbitmq_cookie
+        volumes:
+        - rabbitmq-3-data:/var/lib/rabbitmq
+        networks:
+            data:
+                ipv4_address: 172.28.30.105
+        healthcheck:
+            test:
+            - CMD
+            - rabbitmq-diagnostics
+            - -q
+            - check_running
+            interval: 10s
+            timeout: 5s
+            retries: 24
+            start_period: 20s
+    rabbitmq-proxy:
+        build:
+            context: ./infrastructure/rabbitmq-ha
+            dockerfile: Dockerfile.proxy
+        image: flowrun-rabbitmq-proxy
+        restart: unless-stopped
+        ports:
+        - 127.0.0.1:15672:15672
+        networks:
+            data:
+                ipv4_address: 172.28.30.106
+            management: {}
+        depends_on:
+            rabbitmq-1:
+                condition: service_healthy
+            rabbitmq-2:
+                condition: service_healthy
+            rabbitmq-3:
+                condition: service_healthy
+        healthcheck:
+            test:
+            - CMD
+            - /usr/local/bin/flowrun-rabbitmq-proxy-health
+            interval: 5s
+            timeout: 4s
+            retries: 24
+            start_period: 10s
 volumes:
     postgres-data: null
     rabbitmq-data: null
     postgres-1-data: null
     postgres-2-data: null
     etcd-data: null
+    rabbitmq-1-data: null
+    rabbitmq-2-data: null
+    rabbitmq-3-data: null
 networks:
     edge:
         name: flowrun-edge
@@ -317,3 +401,6 @@ networks:
         ipam:
             config:
             -   subnet: 172.28.40.0/24
+secrets:
+    rabbitmq_cookie:
+        file: ./.secrets/rabbitmq-cookie

@@ -1,0 +1,12 @@
+FROM haproxy:3.2-alpine
+
+USER root
+RUN apk add --no-cache socat
+
+COPY haproxy.cfg /usr/local/etc/haproxy/haproxy.cfg
+COPY proxy-health.sh /usr/local/bin/flowrun-rabbitmq-proxy-health
+RUN sed -i 's/\r$//' /usr/local/bin/flowrun-rabbitmq-proxy-health \
+    && chmod +x /usr/local/bin/flowrun-rabbitmq-proxy-health
+
+USER haproxy
+CMD ["haproxy", "-W", "-db", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]

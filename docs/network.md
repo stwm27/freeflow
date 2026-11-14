@@ -7,10 +7,10 @@
 | edge | 172.28.10.0/24 | Gateway, Frontend |
 | app | 172.28.20.0/24 | Gateway, Task API, Scheduler, Worker |
 | data | 172.28.30.0/24 | Task API, Scheduler, Worker, Redis, RabbitMQ, SQL-точка входа |
-| management | Назначается Docker | RabbitMQ, публикация веб-панели |
+| management | Назначается Docker | RabbitMQ Proxy, публикация веб-панели |
 | pg-ha | 172.28.40.0/24 | postgres-1, postgres-2, etcd, HAProxy |
 
-Сети data и pg-ha внутренние. RabbitMQ подключён также к обычной bridge-сети management для публикации панели на ноутбук.
+Сети data и pg-ha внутренние. RabbitMQ Proxy подключён также к обычной bridge-сети management для публикации панели на ноутбук. Три брокера находятся в data.
 
 На ноутбуке опубликованы Gateway на `127.0.0.1:8080`, Task API и Swagger на `127.0.0.1:8000`, RabbitMQ Management на `127.0.0.1:15672`.
 
@@ -25,6 +25,10 @@
 | 172.28.30.10 | Task API |
 | 172.28.30.20 | Worker |
 | 172.28.30.30 | Scheduler |
+| 172.28.30.103 | rabbitmq-1 |
+| 172.28.30.104 | rabbitmq-2 |
+| 172.28.30.105 | rabbitmq-3 |
+| 172.28.30.106 | rabbitmq-proxy |
 | 172.28.40.10 | etcd |
 | 172.28.40.11 | postgres-1 |
 | 172.28.40.12 | postgres-2 |
@@ -115,3 +119,5 @@ Invoke-RestMethod http://localhost:8080/api/tasks | ConvertTo-Json -Depth 10
 Ожидается ошибка приложения во время блокировки и успешное чтение после удаления правила. При прерывании до finally отдельно выполни указанную команду удаления правила.
 
 Переход на HA, восстановление данных и откат описаны в [reliability.md](reliability.md).
+
+Формирование нового кластера RabbitMQ и проверка отказа узла описаны в [rabbitmq-ha.md](rabbitmq-ha.md).
