@@ -23,30 +23,37 @@ services:
             data:
                 ipv4_address: 172.28.30.10
     postgres:
-        image: postgres:16
+        build: ./infrastructure/postgres-ha
+        image: flowrun-postgres-ha
+        entrypoint:
+        - haproxy
+        command:
+        - -W
+        - -db
+        - -f
+        - /etc/patroni/haproxy.cfg
+        restart: unless-stopped
         environment:
-            POSTGRES_DB: flowrun
-            POSTGRES_USER: flowrun
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-        volumes:
-        - postgres-data:/var/lib/postgresql/data
-        healthcheck:
-            test:
-            - CMD
-            - pg_isready
-            - -h
-            - 127.0.0.1
-            - -U
-            - flowrun
-            - -d
-            - flowrun
-            interval: 5s
-            timeout: 3s
-            retries: 10
         network_mode: service:postgres-firewall
+        tmpfs:
+        - /var/lib/postgresql/data
         depends_on:
             postgres-firewall:
                 condition: service_healthy
+            postgres-1:
+                condition: service_healthy
+            postgres-2:
+                condition: service_healthy
+        healthcheck:
+            test:
+            - CMD
+            - python
+            - /opt/flowrun/check-router.py
+            interval: 5s
+            timeout: 6s
+            retries: 24
+            start_period: 10s
     redis:
         image: redis:7-alpine
         healthcheck:
@@ -83,7 +90,7 @@ services:
         networks:
             data:
                 ipv4_address: 172.28.30.102
-            management: {} 
+            management: {}
     scheduler:
         build: ./scheduler
         restart: unless-stopped
@@ -159,6 +166,8 @@ services:
                 ipv4_address: 172.28.30.100
                 aliases:
                 - postgres
+            pg-ha:
+                ipv4_address: 172.28.40.100
         healthcheck:
             test:
             - CMD
@@ -168,9 +177,121 @@ services:
             interval: 5s
             timeout: 3s
             retries: 10
+    etcd:
+        image: quay.io/coreos/etcd:v3.5.21
+        restart: unless-stopped
+        command:
+        - --name=etcd
+        - --data-dir=/etcd-data
+        - --listen-client-urls=http://0.0.0.0:2379
+        - --advertise-client-urls=http://etcd:2379
+        - --listen-peer-urls=http://0.0.0.0:2380
+        - --initial-advertise-peer-urls=http://etcd:2380
+        - --initial-cluster=etcd=http://etcd:2380
+        - --initial-cluster-state=new
+        volumes:
+        - etcd-data:/etcd-data
+        networks:
+            pg-ha:
+                ipv4_address: 172.28.40.10
+        healthcheck:
+            test:
+            - CMD
+            - /usr/local/bin/etcdctl
+            - --endpoints=http://127.0.0.1:2379
+            - endpoint
+            - health
+            interval: 5s
+            timeout: 3s
+            retries: 20
+        entrypoint:
+        - /usr/local/bin/etcd
+    postgres-1:
+        build: ./infrastructure/postgres-ha
+        image: flowrun-postgres-ha
+        restart: unless-stopped
+        stop_grace_period: 30s
+        environment:
+            PATRONI_NAME: postgres-1
+            PATRONI_POSTGRESQL_CONNECT_ADDRESS: 172.28.40.11:5432
+            PATRONI_RESTAPI_CONNECT_ADDRESS: 172.28.40.11:8008
+            PATRONI_SUPERUSER_USERNAME: flowrun
+            PATRONI_SUPERUSER_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD
+                in .env}
+            PATRONI_REPLICATION_USERNAME: replicator
+            PATRONI_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD:?Set POSTGRES_REPLICATION_PASSWORD
+                in .env}
+            PATRONI_RESTAPI_USERNAME: flowrun-admin
+            PATRONI_RESTAPI_PASSWORD: ${PATRONI_API_PASSWORD:?Set PATRONI_API_PASSWORD
+                in .env}
+        volumes:
+        - postgres-1-data:/var/lib/postgresql/data
+        networks:
+            pg-ha:
+                ipv4_address: 172.28.40.11
+        depends_on:
+            etcd:
+                condition: service_healthy
+        healthcheck:
+            test:
+            - CMD
+            - curl
+            - --fail
+            - --silent
+            - --show-error
+            - --max-time
+            - '3'
+            - http://127.0.0.1:8008/health
+            interval: 5s
+            timeout: 4s
+            retries: 48
+            start_period: 10s
+    postgres-2:
+        build: ./infrastructure/postgres-ha
+        image: flowrun-postgres-ha
+        restart: unless-stopped
+        stop_grace_period: 30s
+        environment:
+            PATRONI_NAME: postgres-2
+            PATRONI_POSTGRESQL_CONNECT_ADDRESS: 172.28.40.12:5432
+            PATRONI_RESTAPI_CONNECT_ADDRESS: 172.28.40.12:8008
+            PATRONI_SUPERUSER_USERNAME: flowrun
+            PATRONI_SUPERUSER_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD
+                in .env}
+            PATRONI_REPLICATION_USERNAME: replicator
+            PATRONI_REPLICATION_PASSWORD: ${POSTGRES_REPLICATION_PASSWORD:?Set POSTGRES_REPLICATION_PASSWORD
+                in .env}
+            PATRONI_RESTAPI_USERNAME: flowrun-admin
+            PATRONI_RESTAPI_PASSWORD: ${PATRONI_API_PASSWORD:?Set PATRONI_API_PASSWORD
+                in .env}
+        volumes:
+        - postgres-2-data:/var/lib/postgresql/data
+        networks:
+            pg-ha:
+                ipv4_address: 172.28.40.12
+        depends_on:
+            etcd:
+                condition: service_healthy
+        healthcheck:
+            test:
+            - CMD
+            - curl
+            - --fail
+            - --silent
+            - --show-error
+            - --max-time
+            - '3'
+            - http://127.0.0.1:8008/health
+            interval: 5s
+            timeout: 4s
+            retries: 48
+            start_period: 10s
 volumes:
     postgres-data: null
     rabbitmq-data: null
+    postgres-1-data: null
+    postgres-2-data: null
+    etcd-data: null
 networks:
     edge:
         name: flowrun-edge
@@ -189,4 +310,10 @@ networks:
             config:
             -   subnet: 172.28.30.0/24
     management:
-        name: flowrun-management 
+        name: flowrun-management
+    pg-ha:
+        name: flowrun-pg-ha
+        internal: true
+        ipam:
+            config:
+            -   subnet: 172.28.40.0/24
